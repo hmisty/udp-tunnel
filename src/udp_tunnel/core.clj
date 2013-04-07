@@ -8,5 +8,5 @@
 
 (defn -main [& args]
   (let [config (load-config CONFIG_FILE)]
-    (apply start-proxy (map #(% config) [:mode :local :remote :password :timeout]))))
+    (start-proxy config)))
 

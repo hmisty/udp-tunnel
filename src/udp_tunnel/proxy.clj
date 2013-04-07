@@ -12,45 +12,59 @@
 
 (def socket-south (ref nil)) ;; socket downstream, to listen
 (def socket-north (ref nil)) ;; socket upstream, to connect
+(def seen (atom {:south false :north false}))
 
 (defn upstream
   []
   (let [packet (DatagramPacket. (byte-array PACKET_SIZE) PACKET_SIZE)]
+    (println "upstream started.")
     (loop []
       (when-not (or (nil? @socket-south) (nil? @socket-north))
         (.receive @socket-south packet)
+        (if-not (:south @seen)
+          (println "consumer connected.")
+          (swap! seen update-in [:south] true))
         (.setAddress packet (.getInetAddress @socket-north))
         (.setPort packet (.getPort @socket-north))
         (.send @socket-north packet)
-        (recur)))))
+        (recur)))
+    (println "upstream exit.")))
 
 (defn downstream
   []
   (let [packet (DatagramPacket. (byte-array PACKET_SIZE) PACKET_SIZE)]
+    (println "downstream started.")
     (loop []
       (when-not (or (nil? @socket-south) (nil? @socket-north))
+        (if-not (:north @seen)
+          (println "service connected.")
+          (swap! seen update-in [:north] true))
         (.receive @socket-north packet)
         (.setAddress packet (.getInetAddress @socket-south))
         (.setPort packet (.getPort @socket-south))
         (.send @socket-south packet)
-        (recur)))))
+        (recur)))
+    (println "downstream exit.")))
 
 (declare stop-proxy)
 
 (defn start-proxy
-  [mode local remote password timeout]
-  (let [[host port] local
-        [s-host s-port] remote
-        socket-listen (DatagramSocket. port (InetAddress/getByName host))
-        socket-connect (doto (DatagramSocket.) 
-                         (.connect (InetAddress/getByName s-host) s-port))
-        up (future (upstream) true)
-        down (future (downstream) true)]
-    (dosync
-      (ref-set socket-south socket-listen)
-      (ref-set socket-north socket-connect))
-    (and @up @down)
-    (stop-proxy)))
+  ([config] 
+   (apply start-proxy (map #(% config)
+                           [:mode :local :remote :password :timeout])))
+  ([mode local remote password timeout]
+   (let [[host port] local
+         [s-host s-port] remote
+         socket-listen (DatagramSocket. port (InetAddress/getByName host))
+         socket-connect (doto (DatagramSocket.) 
+                          (.connect (InetAddress/getByName s-host) s-port))]
+     (dosync
+       (ref-set socket-south socket-listen)
+       (ref-set socket-north socket-connect))
+     (let [up (future (upstream) true)
+           down (future (downstream) true)]
+       (and @up @down)
+       (stop-proxy)))))
 
 (defn stop-proxy
   []
