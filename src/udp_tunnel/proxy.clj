@@ -9,10 +9,14 @@
 ;; addr = host addr, the InetAddress instance
 
 (def PACKET_SIZE 1024)
+(def DEBUG true)
 
 (def socket-south (ref nil)) ;; socket downstream, to listen
 (def socket-north (ref nil)) ;; socket upstream, to connect
-(def seen (atom {:south false :north false}))
+
+(defmacro debug-info
+  [info]
+  (if DEBUG `(do (print ~info) (flush)) nil))
 
 (defn upstream
   []
@@ -21,9 +25,7 @@
     (loop []
       (when-not (or (nil? @socket-south) (nil? @socket-north))
         (.receive @socket-south packet)
-        (if-not (:south @seen)
-          (println "consumer connected.")
-          (swap! seen update-in [:south] true))
+        (debug-info "^")
         (.setAddress packet (.getInetAddress @socket-north))
         (.setPort packet (.getPort @socket-north))
         (.send @socket-north packet)
@@ -36,10 +38,8 @@
     (println "downstream started.")
     (loop []
       (when-not (or (nil? @socket-south) (nil? @socket-north))
-        (if-not (:north @seen)
-          (println "service connected.")
-          (swap! seen update-in [:north] true))
         (.receive @socket-north packet)
+        (debug-info "v")
         (.setAddress packet (.getInetAddress @socket-south))
         (.setPort packet (.getPort @socket-south))
         (.send @socket-south packet)
