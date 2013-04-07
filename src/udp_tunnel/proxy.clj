@@ -1,4 +1,5 @@
 (ns udp-tunnel.proxy
+  (:gen-class)
   (:import (java.net InetAddress DatagramPacket DatagramSocket)))
 
 ;; tunnnel server and client are the similar proxies
@@ -13,6 +14,7 @@
 
 (def socket-south (ref nil)) ;; socket downstream, to listen
 (def socket-north (ref nil)) ;; socket upstream, to connect
+(def client-addr (atom nil)) ;; last seen client addr
 
 (defmacro debug-info
   [info]
@@ -26,6 +28,9 @@
       (when-not (or (nil? @socket-south) (nil? @socket-north))
         (.receive @socket-south packet)
         (debug-info "^")
+        (when (nil? @client-addr)
+          (debug-info "+")
+          (swap! client-addr (fn [_] (.getSocketAddress packet))))
         (.setAddress packet (.getInetAddress @socket-north))
         (.setPort packet (.getPort @socket-north))
         (.send @socket-north packet)
@@ -39,9 +44,8 @@
     (loop []
       (when-not (or (nil? @socket-south) (nil? @socket-north))
         (.receive @socket-north packet)
-        (debug-info "v")
-        (.setAddress packet (.getInetAddress @socket-south))
-        (.setPort packet (.getPort @socket-south))
+        #_(debug-info "v")
+        (.setSocketAddress packet @client-addr)
         (.send @socket-south packet)
         (recur)))
     (println "downstream exit.")))

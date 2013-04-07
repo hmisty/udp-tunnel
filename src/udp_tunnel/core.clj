@@ -1,4 +1,5 @@
 (ns udp-tunnel.core
+  (:gen-class)
   (:use [udp-tunnel.proxy]))
 
 (def CONFIG_FILE "config.clj")
