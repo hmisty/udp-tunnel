@@ -38,7 +38,7 @@
 (declare stop-proxy)
 
 (defn start-proxy
-  [local remote password]
+  [mode local remote password timeout]
   (let [[host port] local
         [s-host s-port] remote
         socket-listen (DatagramSocket. port (InetAddress/getByName host))
