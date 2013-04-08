@@ -9,5 +9,9 @@
 
 (defn -main [& args]
   (let [config (load-config CONFIG_FILE)]
-    (start-proxy config)))
+    (start-proxy
+      (case (first args)
+        (nil) config
+        ("-s") (assoc config :mode :tunnel-server)
+        ("-c") (assoc config :mode :tunnel-client)))))
 

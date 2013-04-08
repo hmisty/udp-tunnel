@@ -1,6 +1,7 @@
 (ns udp-tunnel.proxy
   (:gen-class)
-  (:import (java.net InetAddress DatagramPacket DatagramSocket)))
+  (:import (java.net InetAddress DatagramPacket DatagramSocket
+                     SocketTimeoutException)))
 
 ;; tunnnel server and client are the similar proxies
 ;; they only differentiate from when to encode and when to decode
@@ -9,72 +10,71 @@
 ;; host = host name, e.g. liuconsulting.com or 1.2.3.4
 ;; addr = host addr, the InetAddress instance
 
-(def PACKET_SIZE 1024)
+(def PACKET_SIZE 65535)
 (def DEBUG true)
 
-(def socket-south (ref nil)) ;; socket downstream, to listen
-(def socket-north (ref nil)) ;; socket upstream, to connect
-(def client-addr (atom nil)) ;; last seen client addr
+(def active (atom true))
+(def client-sockaddr (atom nil)) ;; the last seen client socket address
 
 (defmacro debug-info
   [info]
   (if DEBUG `(do (print ~info) (flush)) nil))
 
+(defmacro remember
+  [packet]
+  `(when-not (= @client-sockaddr (.getSocketAddress ~packet))
+     (swap! client-sockaddr (fn [a#] (.getSocketAddress ~packet)))))
+
 (defn upstream
-  []
+  [left-socket right-socket]
+  (println "upstream started.")
   (let [packet (DatagramPacket. (byte-array PACKET_SIZE) PACKET_SIZE)]
-    (println "upstream started.")
     (loop []
-      (when-not (or (nil? @socket-south) (nil? @socket-north))
-        (.receive @socket-south packet)
-        (debug-info "^")
-        (when (nil? @client-addr)
-          (debug-info "+")
-          (swap! client-addr (fn [_] (.getSocketAddress packet))))
-        (.setAddress packet (.getInetAddress @socket-north))
-        (.setPort packet (.getPort @socket-north))
-        (.send @socket-north packet)
-        (recur)))
-    (println "upstream exit.")))
+      (when @active
+        (try 
+          (.receive left-socket packet)
+          (remember packet)
+          (.setSocketAddress packet (.getRemoteSocketAddress right-socket))
+          (.send right-socket packet)
+          (catch SocketTimeoutException e1 (debug-info "?"))
+          (catch Exception e (debug-info "x"))
+          (finally (debug-info ">")))
+        (recur)))))
 
 (defn downstream
-  []
+  [left-socket right-socket]
+  (println "downstream started.")
   (let [packet (DatagramPacket. (byte-array PACKET_SIZE) PACKET_SIZE)]
-    (println "downstream started.")
     (loop []
-      (when-not (or (nil? @socket-south) (nil? @socket-north))
-        (.receive @socket-north packet)
-        #_(debug-info "v")
-        (.setSocketAddress packet @client-addr)
-        (.send @socket-south packet)
-        (recur)))
-    (println "downstream exit.")))
-
-(declare stop-proxy)
+      (when @active
+        (try 
+          (.receive right-socket packet)
+          (.setSocketAddress packet @client-sockaddr)
+          (.send left-socket packet)
+          (catch SocketTimeoutException e1 (debug-info "?"))
+          (catch Exception e (debug-info (str "x" (.getMessage e))))
+          (finally (debug-info "<")))
+        (recur)))))
 
 (defn start-proxy
   ([config] 
-   (apply start-proxy (map #(% config)
-                           [:mode :local :remote :password :timeout])))
+   (apply start-proxy 
+          (map #(% config)
+               (if (= (:mode config) :tunnel-server)
+                 [:mode :tunnel-server :server :password :timeout]
+                 [:mode :tunnel-client :tunnel-server :password :timeout]))))
   ([mode local remote password timeout]
    (let [[host port] local
          [s-host s-port] remote
-         socket-listen (DatagramSocket. port (InetAddress/getByName host))
-         socket-connect (doto (DatagramSocket.) 
-                          (.connect (InetAddress/getByName s-host) s-port))]
-     (dosync
-       (ref-set socket-south socket-listen)
-       (ref-set socket-north socket-connect))
-     (let [up (future (upstream) true)
-           down (future (downstream) true)]
-       (and @up @down)
-       (stop-proxy)))))
-
-(defn stop-proxy
-  []
-  (.close @socket-south)
-  (.close @socket-north)
-  (dosync
-    (ref-set socket-south nil)
-    (ref-set socket-north nil)))
+         timeout' (* 1000 timeout)]
+     (with-open [left-socket (doto (DatagramSocket.
+                                       port
+                                       (InetAddress/getByName host))
+                                 (.setSoTimeout timeout'))
+                 right-socket (doto (DatagramSocket.) 
+                                 (.setSoTimeout timeout')
+                                 (.connect (InetAddress/getByName s-host) s-port))]
+       (let [up (future (upstream left-socket right-socket) true)
+             down (future (downstream left-socket right-socket) true)]
+         (and @up @down))))))
 
