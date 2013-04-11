@@ -1,8 +1,8 @@
 (ns udp-tunnel.proxy
   (:gen-class)
+  (:use [udp-tunnel.obfuscator :only (get-encrypt-table get-decrypt-table encrypt decrypt)])
   (:import (java.net InetAddress DatagramPacket DatagramSocket
-                     SocketTimeoutException))
-  (:use [udp-tunnel.proxy :only (get-encrypt-table get-decrypt-table encrypt decrypt)]))
+                     SocketTimeoutException)))
 
 ;; tunnnel server and client are the similar proxies
 ;; they only differentiate from when to encode and when to decode
@@ -44,11 +44,11 @@
         (try 
           (.receive left-socket packet)
           (remember packet)
-          (decrypt-encrypt packet)
+          (decrypt-encrypt packet encrypt-table decrypt-table)
           (.setSocketAddress packet (.getRemoteSocketAddress right-socket))
           (.send right-socket packet)
           (catch SocketTimeoutException e1 (debug-info "?"))
-          (catch Exception e (debug-info "x"))
+          (catch Exception e (debug-info (str "x" (.getMessage e))))
           (finally (debug-info ">")))
         (recur)))))
 
@@ -62,7 +62,7 @@
       (when @active
         (try 
           (.receive right-socket packet)
-          (decrypt-encrypt packet)
+          (decrypt-encrypt packet encrypt-table decrypt-table)
           (.setSocketAddress packet @client-sockaddr)
           (.send left-socket packet)
           (catch SocketTimeoutException e1 (debug-info "?"))
@@ -83,10 +83,10 @@
          timeout' (* 1000 timeout)
          encrypt-table (get-encrypt-table password)
          decrypt-table (get-decrypt-table encrypt-table)
-         upstream-encrypt (if (= :mode :tunnel-client) encrypt-table nil)
-         upstream-decrypt (if (= :mode :tunnel-server) decrypt-table nil)
-         downstream-encrypt (if (= :mode :tunnel-server) encrypt-table nil)]
-         downstream-decrypt (if (= :mode :tunnel-client) decrypt-table nil) 
+         upstream-encrypt (if (= mode :tunnel-client) encrypt-table nil)
+         upstream-decrypt (if (= mode :tunnel-server) decrypt-table nil)
+         downstream-encrypt (if (= mode :tunnel-server) encrypt-table nil)
+         downstream-decrypt (if (= mode :tunnel-client) decrypt-table nil)]
      (with-open [left-socket (doto (DatagramSocket.
                                        port
                                        (InetAddress/getByName host))
