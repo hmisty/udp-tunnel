@@ -12,7 +12,7 @@
 ;; host = host name, e.g. liuconsulting.com or 1.2.3.4
 ;; addr = host addr, the InetAddress instance
 
-(def PACKET_SIZE 65535)
+(def BUFFER_SIZE 65535)
 (def DEBUG true)
 
 (def active (atom true))
@@ -35,14 +35,15 @@
         data (byte-array (take length (drop offset buf)))
         data' (if decrypt-table (decrypt data decrypt-table) data)
         data'' (if encrypt-table (encrypt data' encrypt-table) data')]
-    (.setData packet data'')))
+    (.setData packet data'' 0 (count data''))))
 
 (defn upstream
   [left-socket right-socket encrypt-table decrypt-table]
   (println "upstream started.")
   (if decrypt-table (println "upstream decrypting in."))
   (if encrypt-table (println "upstream encrypting out."))
-  (let [packet (DatagramPacket. (byte-array PACKET_SIZE) PACKET_SIZE)]
+  (let [buf (byte-array BUFFER_SIZE)
+        packet (DatagramPacket. buf BUFFER_SIZE)]
     (loop []
       (when @active
         (try 
@@ -52,8 +53,9 @@
           (.setSocketAddress packet (.getRemoteSocketAddress right-socket))
           (.send right-socket packet)
           (catch SocketTimeoutException e1 (debug-info "?"))
-          (catch Exception e (debug-info "x"))
+          (catch Exception e (debug-info (str "x" (.getMessage e))))
           (finally (debug-info ">")))
+        (.setData packet buf 0 BUFFER_SIZE)
         (recur)))))
 
 (defn downstream
@@ -61,7 +63,8 @@
   (println "downstream started.")
   (if decrypt-table (println "downstream decrypting in."))
   (if encrypt-table (println "downstream encrypting out."))
-  (let [packet (DatagramPacket. (byte-array PACKET_SIZE) PACKET_SIZE)]
+  (let [buf (byte-array BUFFER_SIZE)
+        packet (DatagramPacket. buf BUFFER_SIZE)]
     (loop []
       (when @active
         (try 
@@ -70,8 +73,9 @@
           (.setSocketAddress packet @client-sockaddr)
           (.send left-socket packet)
           (catch SocketTimeoutException e1 (debug-info "?"))
-          (catch Exception e (debug-info "x"))
+          (catch Exception e (debug-info (str "x" (.getMessage e))))
           (finally (debug-info "<")))
+        (.setData packet buf 0 BUFFER_SIZE)
         (recur)))))
 
 (defn start-proxy
