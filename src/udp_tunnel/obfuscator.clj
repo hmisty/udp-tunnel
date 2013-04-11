@@ -7,8 +7,33 @@
   [n]
   (map (fn [_] (rand-int 255)) (range n)))
 
-(defn md5<-bytes
-  "Generate a md5 checksum for the given byte-array."
+(defn signed-byte
+  "Returns a signed byte -128 ~ 127 inclusive of the given number n."
+  [n]
+  (let [low7bits (bit-and n 0x7f)
+        neg (bit-test n 7)
+        value (if neg (- low7bits 128) low7bits)]
+    (byte value)))
+
+(defn unsigned-byte
+  "Returns an unsigned byte (int) 0 ~ 255 inclusive of the given byte b."
+  [b]
+  (bit-and b 0xff))
+
+(defn unsigned-seq
+  "Get a lazy seq of unsigned int from the given byte-array."
+  [data]
+  (map unsigned-byte data))
+
+(declare md5-bytes)
+
+(defn md5
+  "Generate a md5 checksum (byte-array) for the given string."
+  [token]
+  (md5-bytes (.getBytes token)))
+
+(defn md5-bytes
+  "Generate a md5 checksum (byte-array) for the given byte-array."
   [data]
   (let [hash-bytes
         (doto (java.security.MessageDigest/getInstance "MD5")
@@ -16,15 +41,15 @@
           (.update data))]
     (.digest hash-bytes)))
 
-(defn md5
-  "Generate a md5 checksum for the given string."
-  [token]
-  (md5<-bytes (.getBytes token))
+(defn md5-hex
+  "Generate a md5 checksum (hex) for the given byte-array."
+  [data]
+  (.toString (BigInteger. 1 (md5 data)) 16))
 
-(defn md5->hex
-  "Generate a md5 checksum for the given string."
-  [token]
-  (.toString (BigInteger. 1 (md5 token)) 16))
+(defn md5-seq
+  "Generate a md5 checksum (seq) for the given byte-array."
+  [data]
+  (unsigned-seq (md5-bytes data)))
 
 #_(defn map-2step
   "Returns a lazy seq by applying f to the first and second items, then
@@ -54,11 +79,10 @@
           (fn [x y] (compare (rem a' (+ x i 1)) (rem a' (+ y i 1)))))
         table))))
 
-
-;; doesn't work
 (defn encrypt
+  "Returns encrypted byte-array of the given data (byte-array)."
   [data table]
-  (let [h (seq (md5<-bytes data))
+  (let [m (md5-seq data) ;; 16 bytes
         len (count data)
         pad-len (cond
                   (<= len 50) 150
@@ -66,13 +90,22 @@
                   (<= len 150) 50
                   :default 10)
         rnd (rand-bytes pad-len)
-        data-seq (seq data)
-        data' (concat h [pad-len 0] rnd data-seq)]
-    (pprint data')
-    (map #(nth table (int %)) data')))
+        data-seq (unsigned-seq data)
+        data' (concat m [pad-len 0] rnd data-seq)]
+    (byte-array (map #(signed-byte (nth table %)) data'))))
 
-
-
-
-
+(defn decrypt
+  "Returns decrypted byte-array of the given data (byte-array)."
+  [data table]
+  (let [len (count data)]
+    (if (< len 150)
+      nil
+      (let [decrypt_table (sort #(compare (nth table %) (nth table %2)) (range 256))
+            data' (map #(nth decrypt_table %) (unsigned-seq data))
+            m (take 16 data')
+            pad-len (nth data' 16)
+            origin (drop (+ 18 pad-len) data')
+            origin' (byte-array (map signed-byte origin))
+            m' (md5-seq origin')]
+        (if (= m m') origin' nil)))))
 
