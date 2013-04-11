@@ -60,7 +60,7 @@
     (when-let [x2 (second coll)]
       (concat (f x1 x2) (map-2step f (drop 2 coll))))))
 
-(defn get-table
+(defn get-encrypt-table
   [token]
   (let [s (md5 token)
         ;; take first 8 bytes as little endian so we need reverse
@@ -79,9 +79,13 @@
           (fn [x y] (compare (rem a' (+ x i 1)) (rem a' (+ y i 1)))))
         table))))
 
+(defn get-decrypt-table
+  [encrypt-table]
+  (sort #(compare (nth encrypt-table %) (nth encrypt-table %2)) (range 256)))
+
 (defn encrypt
   "Returns encrypted byte-array of the given data (byte-array)."
-  [data table]
+  [data encrypt-table]
   (let [m (md5-seq data) ;; 16 bytes
         len (count data)
         pad-len (cond
@@ -92,16 +96,15 @@
         rnd (rand-bytes pad-len)
         data-seq (unsigned-seq data)
         data' (concat m [pad-len 0] rnd data-seq)]
-    (byte-array (map #(signed-byte (nth table %)) data'))))
+    (byte-array (map #(signed-byte (nth encrypt-table %)) data'))))
 
 (defn decrypt
   "Returns decrypted byte-array of the given data (byte-array)."
-  [data table]
+  [data decrypt-table]
   (let [len (count data)]
     (if (< len 150)
       nil
-      (let [decrypt_table (sort #(compare (nth table %) (nth table %2)) (range 256))
-            data' (map #(nth decrypt_table %) (unsigned-seq data))
+      (let [data' (map #(nth decrypt-table %) (unsigned-seq data))
             m (take 16 data')
             pad-len (nth data' 16)
             origin (drop (+ 18 pad-len) data')
