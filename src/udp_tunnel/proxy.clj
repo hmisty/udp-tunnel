@@ -1,6 +1,7 @@
 (ns udp-tunnel.proxy
   (:gen-class)
-  (:use [udp-tunnel.obfuscator :only (get-encrypt-table get-decrypt-table encrypt decrypt)])
+  (:use [udp-tunnel.obfuscator :only (get-encrypt-table get-decrypt-table encrypt decrypt)]
+        [clojure.pprint])
   (:import (java.net InetAddress DatagramPacket DatagramSocket
                      SocketTimeoutException)))
 
@@ -28,7 +29,10 @@
 
 (defn decrypt-encrypt
   [packet encrypt-table decrypt-table]
-  (let [data (.getData packet)
+  (let [buf (.getData packet)
+        offset (.getOffset packet)
+        length (.getLength packet)
+        data (byte-array (take length (drop offset buf)))
         data' (if decrypt-table (decrypt data decrypt-table) data)
         data'' (if encrypt-table (encrypt data' encrypt-table) data')]
     (.setData packet data'')))
@@ -48,7 +52,7 @@
           (.setSocketAddress packet (.getRemoteSocketAddress right-socket))
           (.send right-socket packet)
           (catch SocketTimeoutException e1 (debug-info "?"))
-          (catch Exception e (debug-info (str "x" (.getMessage e))))
+          (catch Exception e (debug-info "x"))
           (finally (debug-info ">")))
         (recur)))))
 
@@ -66,7 +70,7 @@
           (.setSocketAddress packet @client-sockaddr)
           (.send left-socket packet)
           (catch SocketTimeoutException e1 (debug-info "?"))
-          (catch Exception e (debug-info (str "x" (.getMessage e))))
+          (catch Exception e (debug-info "x"))
           (finally (debug-info "<")))
         (recur)))))
 
