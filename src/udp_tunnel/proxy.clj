@@ -54,7 +54,7 @@
           (.send right-socket packet)
           (catch SocketTimeoutException e1 (debug-info "?"))
           (catch Exception e (debug-info (str "x" (.getMessage e))))
-          (finally (debug-info ">")))
+          #_(finally (debug-info ">")))
         (.setData packet buf 0 BUFFER_SIZE)
         (recur)))))
 
@@ -74,7 +74,7 @@
           (.send left-socket packet)
           (catch SocketTimeoutException e1 (debug-info "?"))
           (catch Exception e (debug-info (str "x" (.getMessage e))))
-          (finally (debug-info "<")))
+          #_(finally (debug-info "<")))
         (.setData packet buf 0 BUFFER_SIZE)
         (recur)))))
 
