@@ -109,7 +109,7 @@ The obfuscation algorithm is the re-implementaiton of that in [shadowsocks][3] u
 
 [3]: https://github.com/clowwindy/shadowsocks
 
-## Shortcomings
+## Limitations
 
 For single client single user only.
 
