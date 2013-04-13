@@ -1,4 +1,4 @@
-(defproject udp-tunnel "0.1.0-SNAPSHOT"
+(defproject udp-tunnel "0.2.0-SNAPSHOT"
   :description "udp-tunnel: an udp obfuscated tunneling implementation"
   :url "https://github.com/hmisty/udp-tunnel"
   :license {:name "Eclipse Public License"

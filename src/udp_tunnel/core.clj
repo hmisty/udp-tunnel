@@ -27,13 +27,12 @@
   if there's neither -s nor -c, the :mode in CONFIG_FILE decides."
   (let [{config-file "-f" mode-server "-s" mode-client "-c"
          :or {config-file CONFIG_FILE}} (arg-parse args)
-        mode (or (and mode-server :server) (and mode-client :client) :default)
-        config' (load-config config-file)
-        config (case mode
-                 :server (assoc config' :mode :tunnel-server)
-                 :client (assoc config' :mode :tunnel-client)
-                 :default config')]
+        mode (or (and mode-server :s) (and mode-client :c) :default)
+        config (load-config config-file)
+        config' (case mode
+                 :s (assoc config :mode :tunnel-server)
+                 :c (assoc config :mode :tunnel-client)
+                 :default config)]
     (println (str "loaded config " config-file))
-    (println (str "starting " (:mode config)))
-    (start-proxy config)))
+    (start-proxy config')))
 

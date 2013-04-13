@@ -16,16 +16,20 @@
 (def DEBUG true)
 
 (def active (atom true))
-(def client-sockaddr (atom nil)) ;; the last seen client socket address
+(def client-sockaddr (atom {})) ;; the last seen client socket address
 
 (defmacro debug-info
   [info]
   (if DEBUG `(do (print ~info) (flush)) nil))
 
-(defmacro remember
-  [packet]
-  `(when-not (= @client-sockaddr (.getSocketAddress ~packet))
-     (swap! client-sockaddr (fn [a#] (.getSocketAddress ~packet)))))
+(defmacro memorize-client
+  [id packet]
+  `(when-not (= (@client-sockaddr ~id) (.getSocketAddress ~packet))
+     (swap! client-sockaddr assoc-in [~id] (.getSocketAddress ~packet))))
+
+(defmacro recall-client
+  [id]
+  `(@client-sockaddr ~id))
 
 (defn decrypt-encrypt
   [packet encrypt-table decrypt-table]
@@ -38,17 +42,17 @@
     (.setData packet data'' 0 (count data''))))
 
 (defn upstream
-  [left-socket right-socket encrypt-table decrypt-table]
-  (println "upstream started.")
-  (if decrypt-table (println "upstream decrypting in."))
-  (if encrypt-table (println "upstream encrypting out."))
+  [id left-socket right-socket encrypt-table decrypt-table]
+  (println (str "upstream " id " started"
+                (if decrypt-table " + decrypting in" "")
+                (if encrypt-table " + encrypting out" "")))
   (let [buf (byte-array BUFFER_SIZE)
         packet (DatagramPacket. buf BUFFER_SIZE)]
     (loop []
       (when @active
         (try 
           (.receive left-socket packet)
-          (remember packet)
+          (memorize-client id packet)
           (decrypt-encrypt packet encrypt-table decrypt-table)
           (.setSocketAddress packet (.getRemoteSocketAddress right-socket))
           (.send right-socket packet)
@@ -59,10 +63,10 @@
         (recur)))))
 
 (defn downstream
-  [left-socket right-socket encrypt-table decrypt-table]
-  (println "downstream started.")
-  (if decrypt-table (println "downstream decrypting in."))
-  (if encrypt-table (println "downstream encrypting out."))
+  [id left-socket right-socket encrypt-table decrypt-table]
+  (println (str "downstream " id " started" 
+                (if decrypt-table " + decrypting in" "")
+                (if encrypt-table " + encrypting out" "")))
   (let [buf (byte-array BUFFER_SIZE)
         packet (DatagramPacket. buf BUFFER_SIZE)]
     (loop []
@@ -70,7 +74,7 @@
         (try 
           (.receive right-socket packet)
           (decrypt-encrypt packet encrypt-table decrypt-table)
-          (.setSocketAddress packet @client-sockaddr)
+          (.setSocketAddress packet (recall-client id))
           (.send left-socket packet)
           (catch SocketTimeoutException e1 (debug-info "?"))
           (catch Exception e (debug-info (str "x" (.getMessage e))))
@@ -78,33 +82,39 @@
         (.setData packet buf 0 BUFFER_SIZE)
         (recur)))))
 
+(defn start-proxy'
+  [id mode local remote password timeout]
+  (let [[host port] local
+        [s-host s-port] remote
+        timeout' (* 1000 timeout)
+        encrypt-table (get-encrypt-table password)
+        decrypt-table (get-decrypt-table encrypt-table)
+        up-encrypt (if (= mode :tunnel-client) encrypt-table nil)
+        up-decrypt (if (= mode :tunnel-server) decrypt-table nil)
+        down-encrypt (if (= mode :tunnel-server) encrypt-table nil)
+        down-decrypt (if (= mode :tunnel-client) decrypt-table nil)]
+    (let [l-sock (doto (DatagramSocket. port (InetAddress/getByName host))
+                   (.setSoTimeout timeout'))
+          r-sock (doto (DatagramSocket.) (.setSoTimeout timeout')
+                   (.connect (InetAddress/getByName s-host) s-port))]
+      (let [up (send-off 
+                 (agent [id l-sock r-sock up-encrypt up-decrypt])
+                 #(apply upstream %))
+            down (send-off 
+                   (agent [id l-sock r-sock down-encrypt down-decrypt])
+                   #(apply downstream %))]
+        [up down]))))
+
 (defn start-proxy
-  ([config] 
-   (apply start-proxy 
-          (map #(% config)
-               (if (= (:mode config) :tunnel-server)
-                 [:mode :tunnel-server :server :password :timeout]
-                 [:mode :tunnel-client :tunnel-server :password :timeout]))))
-  ([mode local remote password timeout]
-   (let [[host port] local
-         [s-host s-port] remote
-         timeout' (* 1000 timeout)
-         encrypt-table (get-encrypt-table password)
-         decrypt-table (get-decrypt-table encrypt-table)
-         upstream-encrypt (if (= mode :tunnel-client) encrypt-table nil)
-         upstream-decrypt (if (= mode :tunnel-server) decrypt-table nil)
-         downstream-encrypt (if (= mode :tunnel-server) encrypt-table nil)
-         downstream-decrypt (if (= mode :tunnel-client) decrypt-table nil)]
-     (with-open [left-socket (doto (DatagramSocket.
-                                       port
-                                       (InetAddress/getByName host))
-                                 (.setSoTimeout timeout'))
-                 right-socket (doto (DatagramSocket.) 
-                                 (.setSoTimeout timeout')
-                                 (.connect (InetAddress/getByName s-host) s-port))]
-       (let [up (future (upstream left-socket right-socket 
-                                  upstream-encrypt upstream-decrypt) true)
-             down (future (downstream left-socket right-socket 
-                                      downstream-encrypt downstream-decrypt) true)]
-         (and @up @down))))))
+  [config] 
+  (let [mode (or (:mode config) :tunnel-client)
+        locals (partition 2 (mode config))
+        remotes (partition 2 ((if (= mode :tunnel-client) :tunnel-server :server) config))
+        password (:password config)
+        timeout (:timeout config)]
+    (println (str "starting " mode))
+    (assert (= (count locals) (count remotes)))
+    (let [agents (map #(start-proxy' % mode %2 %3 password timeout)
+                      (range (count locals)) locals remotes)]
+      (apply await (flatten agents)))))
 
