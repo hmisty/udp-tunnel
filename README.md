@@ -113,6 +113,10 @@ The obfuscation algorithm is the re-implementaiton of that in [shadowsocks][3] u
 
 For single client single user only.
 
+## Know Issues
+
+THE WALL seems be able to shape the obfuscated traffic, especially when streaming videos e.g. youtube. Needs a better obfuscation algorithm.
+
 ## License
 
 Copyright © 2013 Evan Liu (hmisty).
