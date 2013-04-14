@@ -25,16 +25,14 @@
   -s. override the mode as tunnel server.
   -c. override the mode as tunnel client.
   if there's neither -s nor -c, the :mode in CONFIG_FILE decides."
-  (let [{config-file "-f" mode-server "-s" mode-client "-c" ver2 "-2"
+  (let [{config-file "-f" mode-server "-s" mode-client "-c"
          :or {config-file CONFIG_FILE}} (arg-parse args)
         mode (or (and mode-server :s) (and mode-client :c) :default)
-        algorithm (or (and ver2 2) 1)
         config (load-config config-file)
         config' (case mode
                  :s (assoc config :mode :tunnel-server)
                  :c (assoc config :mode :tunnel-client)
-                 :default config)
-        config'' (assoc config' :algorithm algorithm)]
+                 :default config)]
     (println (str "loaded config " config-file))
-    (start-proxy config'')))
+    (start-proxy config')))
 

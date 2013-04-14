@@ -83,7 +83,7 @@
   [encrypt-table]
   (sort #(compare (nth encrypt-table %) (nth encrypt-table %2)) (range 256)))
 
-(defn encrypt
+#_(defn encrypt
   "Returns encrypted byte-array of the given data (byte-array)."
   [data encrypt-table]
   (let [m (md5-seq data) ;; 16 bytes
@@ -98,7 +98,7 @@
         data' (concat m [pad-len 0] rnd data-seq)]
     (byte-array (map #(signed-byte (nth encrypt-table %)) data'))))
 
-(defn decrypt
+#_(defn decrypt
   "Returns decrypted byte-array of the given data (byte-array)."
   [data decrypt-table]
   (let [len (count data)]
@@ -112,7 +112,7 @@
             m' (md5-seq origin')]
         (if (= m m') origin' nil)))))
 
-(defn encrypt-v2
+(defn encrypt
   "Returns encrypted byte-array of the given data (byte-array)."
   [data encrypt-table]
   (let [m (md5-seq data) ;; 16 bytes
@@ -129,7 +129,7 @@
         data' (concat m [pad-len-a pad-len-b] rnd data-seq)]
     (byte-array (map #(signed-byte (nth encrypt-table %)) data'))))
 
-(defn decrypt-v2
+(defn decrypt
   "Returns decrypted byte-array of the given data (byte-array)."
   [data decrypt-table]
   (let [len (count data)]
