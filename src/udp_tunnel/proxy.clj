@@ -1,6 +1,6 @@
 (ns udp-tunnel.proxy
   (:gen-class)
-  (:use [udp-tunnel.obfuscator :only (get-encrypt-table get-decrypt-table encrypt decrypt)]
+  (:use [udp-tunnel.obfuscator :only (get-encrypt-table get-decrypt-table encrypt decrypt encrypt-v2 decrypt-v2)]
         [clojure.pprint])
   (:import (java.net InetAddress DatagramPacket DatagramSocket
                      SocketTimeoutException)))
@@ -31,14 +31,17 @@
   [id]
   `(@client-sockaddr ~id))
 
+(declare ^:dynamic *decrypt*)
+(declare ^:dynamic *encrypt*)
+
 (defn decrypt-encrypt
   [packet encrypt-table decrypt-table]
   (let [buf (.getData packet)
         offset (.getOffset packet)
         length (.getLength packet)
         data (byte-array (take length (drop offset buf)))
-        data' (if decrypt-table (decrypt data decrypt-table) data)
-        data'' (if encrypt-table (encrypt data' encrypt-table) data')]
+        data' (if decrypt-table (*decrypt* data decrypt-table) data)
+        data'' (if encrypt-table (*encrypt* data' encrypt-table) data')]
     (.setData packet data'' 0 (count data''))))
 
 (defn upstream
@@ -111,10 +114,13 @@
         locals (partition 2 (mode config))
         remotes (partition 2 ((if (= mode :tunnel-client) :tunnel-server :server) config))
         password (:password config)
-        timeout (:timeout config)]
+        timeout (:timeout config)
+        algorithm (:algorithm config)]
     (println (str "starting " mode))
     (assert (= (count locals) (count remotes)))
-    (let [agents (map #(start-proxy' % mode %2 %3 password timeout)
-                      (range (count locals)) locals remotes)]
-      (apply await (flatten agents)))))
+    (binding [*decrypt* (if (= algorithm 2) decrypt-v2 decrypt)
+              *encrypt* (if (= algorithm 2) encrypt-v2 encrypt)]
+      (let [agents (map #(start-proxy' % mode %2 %3 password timeout)
+                        (range (count locals)) locals remotes)]
+        (apply await (flatten agents))))))
 

@@ -112,3 +112,36 @@
             m' (md5-seq origin')]
         (if (= m m') origin' nil)))))
 
+(defn encrypt-v2
+  "Returns encrypted byte-array of the given data (byte-array)."
+  [data encrypt-table]
+  (let [m (md5-seq data) ;; 16 bytes
+        len (count data)
+        pad-len (cond
+                  (<= len 50) 150
+                  (<= len 100) 100
+                  (<= len 150) 50
+                  :default 10)
+        pad-len-a (+ pad-len (rand-int 50))
+        pad-len-b (rand-int 50)
+        rnd (rand-bytes (+ pad-len-a pad-len-b))
+        data-seq (unsigned-seq data)
+        data' (concat m [pad-len-a pad-len-b] rnd data-seq)]
+    (byte-array (map #(signed-byte (nth encrypt-table %)) data'))))
+
+(defn decrypt-v2
+  "Returns decrypted byte-array of the given data (byte-array)."
+  [data decrypt-table]
+  (let [len (count data)]
+    (if (< len 150)
+      nil
+      (let [data' (map #(nth decrypt-table %) (unsigned-seq data))
+            m (take 16 data')
+            pad-len-a (nth data' 16)
+            pad-len-b (nth data' 17)
+            pad-len (+ pad-len-a pad-len-b)
+            origin (drop (+ 18 pad-len) data')
+            origin' (byte-array (map signed-byte origin))
+            m' (md5-seq origin')]
+        (if (= m m') origin' nil)))))
+
