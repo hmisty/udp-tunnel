@@ -1,6 +1,7 @@
 (ns udp-tunnel.proxy
   (:gen-class)
-  (:use [udp-tunnel.obfuscator :only (get-encrypt-table get-decrypt-table encrypt decrypt)]
+  (:use [udp-tunnel.obfuscator 
+         :only (get-encrypt-table get-decrypt-table encrypt decrypt encrypt! decrypt!)]
         [clojure.pprint])
   (:import (java.net InetAddress DatagramPacket DatagramSocket
                      SocketTimeoutException)))
@@ -31,6 +32,16 @@
   [id]
   `(@client-sockaddr ~id))
 
+#_(defn decrypt-encrypt
+  [packet encrypt-table decrypt-table]
+  (let [buf (.getData packet)
+        offset (.getOffset packet)
+        length (.getLength packet)
+        data (byte-array (take length (drop offset buf)))
+        data' (if decrypt-table (decrypt data decrypt-table) data)
+        data'' (if encrypt-table (encrypt data' encrypt-table) data')]
+    (.setData packet data'' 0 (count data''))))
+
 (defn decrypt-encrypt
   [packet encrypt-table decrypt-table]
   (let [buf (.getData packet)
@@ -40,6 +51,18 @@
         data' (if decrypt-table (decrypt data decrypt-table) data)
         data'' (if encrypt-table (encrypt data' encrypt-table) data')]
     (.setData packet data'' 0 (count data''))))
+
+#_(defn decrypt-encrypt
+  [packet encrypt-table decrypt-table]
+  (let [array (.getData packet)
+        length (.getLength packet)
+        offset (.getOffset packet)
+        [_ len-a off-a] (if decrypt-table (decrypt! array length offset decrypt-table)
+                          [array length offset]
+                          )
+        [_ len-b off-b] (if encrypt-table (encrypt! array len-a off-a encrypt-table)
+                          [array len-a off-a])]
+    (.. packet (setLength len-b off-b))))
 
 (defn upstream
   [id left-socket right-socket encrypt-table decrypt-table]
